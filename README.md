@@ -6,7 +6,6 @@ Express.js
 สร้าง REST API
 จัดการ authentication
 
-////////////////////////////////////////
 Authentication
 JSON Web Token 
 bcrypt
@@ -14,14 +13,12 @@ bcrypt
 login system
 password hashing
 
-////////////////////////////////////////
 Database
 MySQL
 mysql2
 ใช้สำหรับ:
 เก็บข้อมูล
 
-////////////////////////////////////////
 Frontend
 HTML
 CSS
