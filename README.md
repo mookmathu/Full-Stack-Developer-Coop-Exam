@@ -27,7 +27,6 @@ JavaScript
 login page
 dashboard แสดงข้อมูล
 
-////////////////////////////////////////
 DevOps / Tools
 Docker (MySQL + phpMyAdmin)
 Git & GitHub
