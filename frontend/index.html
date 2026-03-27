@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fleet Dashboard</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+  <h1>🚗 Fleet Dashboard</h1>
+
+  <!-- LOGIN -->
+  <div class="section" id="loginSection">
+    <h2>เข้าสู่ระบบ</h2>
+    <input id="username" placeholder="Username" value="admin" />
+    <input id="password" type="password" placeholder="Password" value="1234" />
+    <button onclick="login()">Login</button>
+    <span id="loginStatus" class="status-msg"></span>
+  </div>
+
+  <!-- NAV TABS -->
+  <div class="tabs" id="mainTabs" style="display:none">
+    <button class="tab active" onclick="showTab('dashboard')">📊 Dashboard</button>
+    <button class="tab" onclick="showTab('vehicles')">🚗 Vehicles</button>
+    <button class="tab" onclick="showTab('trips')">📍 Trips</button>
+    <button class="tab" onclick="showTab('drivers')">👤 Drivers</button>
+    <button class="tab" onclick="showTab('maintenance')">🔧 Maintenance</button>
+    <button class="tab" onclick="showTab('auditlogs')">📋 Audit Log</button>
+    <button class="tab tab-logout" onclick="logout()">Logout</button>
+  </div>
+
+  <!-- DASHBOARD TAB (5.1 + 5.2) -->
+  <div id="tab-dashboard" class="tab-content section" style="display:none">
+    <h2>ภาพรวมระบบ</h2>
+
+    <!-- Metric Cards 5.1 -->
+    <div class="metric-grid" id="metricCards">
+      <div class="metric-card" id="mc-vehicles" onclick="showTab('vehicles')" title="ดูยานพาหนะทั้งหมด">
+        <div class="metric-icon">🚗</div>
+        <div class="metric-value" id="mv-vehicles">—</div>
+        <div class="metric-label">ยานพาหนะทั้งหมด</div>
+      </div>
+      <div class="metric-card mc-active" id="mc-trips" onclick="showTab('trips')" title="ดู trips ที่กำลังวิ่ง">
+        <div class="metric-icon">📍</div>
+        <div class="metric-value" id="mv-trips">—</div>
+        <div class="metric-label">Trips ที่วิ่งวันนี้</div>
+      </div>
+      <div class="metric-card mc-distance" id="mc-distance" onclick="showTab('trips')" title="ดู trips วันนี้">
+        <div class="metric-icon">🛣️</div>
+        <div class="metric-value" id="mv-distance">—</div>
+        <div class="metric-label">ระยะทางรวมวันนี้ (km)</div>
+      </div>
+      <div class="metric-card mc-overdue" id="mc-overdue" onclick="showTab('maintenance')" title="ดูการซ่อมที่เกินกำหนด">
+        <div class="metric-icon">⚠️</div>
+        <div class="metric-value" id="mv-overdue">—</div>
+        <div class="metric-label">ซ่อมบำรุงเกินกำหนด</div>
+      </div>
+    </div>
+
+    <!-- Charts 5.2 -->
+    <div class="charts-grid">
+      <div class="chart-box">
+        <div class="chart-title">🚗 ยานพาหนะตามสถานะ</div>
+        <div class="chart-wrap">
+          <canvas id="chartStatus" width="260" height="260"></canvas>
+          <div id="chartStatusLegend" class="chart-legend"></div>
+        </div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">📈 ระยะทาง 7 วันล่าสุด (km)</div>
+        <canvas id="chartTrend" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- VEHICLES TAB -->
+  <div id="tab-vehicles" class="tab-content section" style="display:none">
+    <h2>ยานพาหนะ</h2>
+    <div class="filter-row">
+      <select id="vFilterStatus" onchange="syncFiltersToURL('v'); loadVehicles()">
+        <option value="">-- All Status --</option>
+        <option value="IDLE">IDLE</option>
+        <option value="ACTIVE">ACTIVE</option>
+        <option value="MAINTENANCE">MAINTENANCE</option>
+        <option value="RETIRED">RETIRED</option>
+      </select>
+      <select id="vFilterType" onchange="syncFiltersToURL('v'); loadVehicles()">
+        <option value="">-- All Type --</option>
+        <option value="TRUCK">TRUCK</option>
+        <option value="VAN">VAN</option>
+        <option value="MOTORCYCLE">MOTORCYCLE</option>
+        <option value="PICKUP">PICKUP</option>
+      </select>
+      <input id="vFilterSearch" placeholder="ค้นหาทะเบียน..." oninput="syncFiltersToURL('v'); loadVehicles()" />
+    </div>
+    <div id="vehicleResult"></div>
+  </div>
+
+  <!-- TRIPS TAB -->
+  <div id="tab-trips" class="tab-content section" style="display:none">
+    <h2>การเดินทาง</h2>
+    <div class="filter-row">
+      <select id="tFilterStatus" onchange="syncFiltersToURL('t'); loadTrips()">
+        <option value="">-- All Status --</option>
+        <option value="SCHEDULED">SCHEDULED</option>
+        <option value="IN_PROGRESS">IN_PROGRESS</option>
+        <option value="COMPLETED">COMPLETED</option>
+        <option value="CANCELLED">CANCELLED</option>
+      </select>
+    </div>
+    <div id="tripResult"></div>
+  </div>
+
+  <!-- DRIVERS TAB -->
+  <div id="tab-drivers" class="tab-content section" style="display:none">
+    <h2>คนขับ</h2>
+    <div class="filter-row">
+      <select id="dFilterStatus" onchange="loadDrivers()">
+        <option value="">-- All Status --</option>
+        <option value="ACTIVE">ACTIVE</option>
+        <option value="INACTIVE">INACTIVE</option>
+        <option value="SUSPENDED">SUSPENDED</option>
+      </select>
+    </div>
+    <div id="driverResult"></div>
+  </div>
+
+  <!-- MAINTENANCE TAB -->
+  <div id="tab-maintenance" class="tab-content section" style="display:none">
+    <h2>การซ่อมบำรุง</h2>
+    <div class="filter-row">
+      <select id="mFilterStatus" onchange="loadMaintenance()">
+        <option value="">-- All Status --</option>
+        <option value="SCHEDULED">SCHEDULED</option>
+        <option value="IN_PROGRESS">IN_PROGRESS</option>
+        <option value="COMPLETED">COMPLETED</option>
+        <option value="OVERDUE">OVERDUE</option>
+      </select>
+    </div>
+    <div id="maintenanceResult"></div>
+  </div>
+
+  <!-- AUDIT LOG TAB (5.4) -->
+  <div id="tab-auditlogs" class="tab-content section" style="display:none">
+    <h2>📋 Audit Log</h2>
+    <div class="filter-row" style="flex-wrap:wrap;gap:6px;margin-bottom:12px">
+      <input id="alFilterUserId"       placeholder="User ID..." style="width:160px" oninput="loadAuditLogs()" />
+      <select id="alFilterAction"      onchange="loadAuditLogs()">
+        <option value="">-- All Actions --</option>
+        <option value="LOGIN">LOGIN</option>
+        <option value="CREATE_VEHICLE">CREATE_VEHICLE</option>
+        <option value="UPDATE_VEHICLE_STATUS">UPDATE_VEHICLE_STATUS</option>
+        <option value="CREATE_TRIP">CREATE_TRIP</option>
+        <option value="UPDATE_TRIP_STATUS">UPDATE_TRIP_STATUS</option>
+        <option value="UPDATE_CHECKPOINT">UPDATE_CHECKPOINT</option>
+        <option value="CREATE_DRIVER">CREATE_DRIVER</option>
+        <option value="UPDATE_DRIVER_STATUS">UPDATE_DRIVER_STATUS</option>
+      </select>
+      <select id="alFilterResource"    onchange="loadAuditLogs()">
+        <option value="">-- All Resources --</option>
+        <option value="users">users</option>
+        <option value="vehicles">vehicles</option>
+        <option value="trips">trips</option>
+        <option value="drivers">drivers</option>
+        <option value="maintenance">maintenance</option>
+      </select>
+      <input id="alFilterDateFrom" type="date" onchange="loadAuditLogs()" />
+      <input id="alFilterDateTo"   type="date" onchange="loadAuditLogs()" />
+      <button onclick="loadAuditLogs()" style="background:#2563eb">🔍 ค้นหา</button>
+    </div>
+    <div id="auditResult"></div>
+  </div>
+
+  <!-- TRIP DETAIL MODAL -->
+  <div id="tripModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h2>📍 Trip Detail</h2>
+      <div id="tripDetail"></div>
+      <button onclick="closeTripModal()" style="margin-top:12px">Close</button>
+    </div>
+  </div>
+
+  <!-- Chart.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="./script.js"></script>
+</body>
+</html>

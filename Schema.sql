@@ -121,3 +121,4 @@ CREATE INDEX idx_maintenance_status ON maintenance(status);
 CREATE INDEX idx_maintenance_scheduled ON maintenance(scheduled_at);
 CREATE INDEX idx_audit_user ON audit_logs(user_id);
 CREATE INDEX idx_audit_created ON audit_logs(created_at);
+
