@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alerts — Fleet Manager</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="layout">
+  <div id="sidebar-placeholder"></div>
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title"><i class="bi bi-bell-fill me-2 text-warning"></i>Alerts</span>
+      <button class="btn btn-sm btn-outline-secondary" onclick="loadAlerts()">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </button>
+    </div>
+    <div class="page-content">
+      <div class="filter-bar">
+        <select id="fSeverity" class="form-select" style="max-width:150px" onchange="loadAlerts()">
+          <option value="">All Severity</option>
+          <option>WARNING</option><option>CRITICAL</option>
+        </select>
+        <select id="fResourceType" class="form-select" style="max-width:170px" onchange="loadAlerts()">
+          <option value="">All Resources</option>
+          <option value="vehicle">Vehicle</option>
+          <option value="driver">Driver</option>
+          <option value="trip">Trip</option>
+          <option value="maintenance">Maintenance</option>
+        </select>
+        <button class="btn btn-outline-primary btn-sm" onclick="markAllRead()">
+          <i class="bi bi-check-all me-1"></i>Mark all read
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-body p-0">
+          <table class="fleet-table" id="alertTable">
+            <thead><tr>
+              <th>Severity</th><th>Message</th><th>Resource</th><th>Triggered</th><th>Action</th>
+            </tr></thead>
+            <tbody id="alertBody">
+              <tr><td colspan="5" class="text-center py-4">
+                <div class="spinner-border text-primary spinner-border-sm"></div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/fleet-api.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  renderSidebar(); initSidebar();
+
+  let allAlerts = [];
+
+  async function loadAlerts() {
+    const severity = document.getElementById('fSeverity').value;
+    const resType  = document.getElementById('fResourceType').value;
+    const qs = new URLSearchParams();
+    if (severity) qs.set('severity', severity);
+    if (resType)  qs.set('affected_resource_type', resType);
+    try {
+      allAlerts = await api.json('/alerts?' + qs.toString()) || [];
+      renderAlertTable(allAlerts);
+    } catch (err) { showToast(err.message, 'danger'); }
+  }
+
+  function renderAlertTable(data) {
+    const tbody = document.getElementById('alertBody');
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state py-5"><i class="bi bi-bell-slash d-block"></i>No alerts</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(a => `
+      <tr style="${a.is_read ? 'opacity:.6' : ''}">
+        <td>${statusBadge(a.severity)}</td>
+        <td><span style="font-weight:${a.is_read?400:600}">${a.message}</span></td>
+        <td>
+          <code style="font-size:11px">${a.affected_resource_type}:${a.affected_resource_id}</code>
+        </td>
+        <td><small>${fmtDateTime(a.triggered_at)}</small></td>
+        <td>
+          ${!a.is_read ? `<button class="btn btn-sm btn-outline-success" onclick="markRead(${a.id})">
+            <i class="bi bi-check"></i>
+          </button>` : '<span class="text-muted" style="font-size:12px">Read</span>'}
+        </td>
+      </tr>`).join('');
+  }
+
+  async function markRead(id) {
+    try {
+      await api.json(`/alerts/${id}/read`, { method: 'PATCH', body: '{}' });
+      loadAlerts();
+    } catch (err) { showToast(err.message, 'danger'); }
+  }
+
+  async function markAllRead() {
+    const unread = allAlerts.filter(a => !a.is_read);
+    await Promise.all(unread.map(a =>
+      api.json(`/alerts/${a.id}/read`, { method: 'PATCH', body: '{}' }).catch(()=>{})
+    ));
+    showToast('All alerts marked as read');
+    loadAlerts();
+    loadAlertCount();
+  }
+
+  loadAlerts();
+</script>
+</body>
+</html>

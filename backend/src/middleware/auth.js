@@ -1,40 +1,49 @@
-import jwt from "jsonwebtoken";
-import { errorResponse } from "../utils/error.js";
+const jwt = require('jsonwebtoken');
+const { errors } = require('../utils/response');
 
-export const JWT_SECRET = process.env.JWT_SECRET || "SECRET_KEY_FLEET";
-export const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "REFRESH_SECRET_KEY_FLEET";
+// Role permission matrix
+const PERMISSIONS = {
+  dispatcher: ['trips:manage', 'checkpoints:manage', 'vehicles:read', 'drivers:read', 'alerts:read', 'audit:own'],
+  admin:      ['trips:manage', 'checkpoints:manage', 'vehicles:manage', 'drivers:manage',
+               'alerts:manage', 'audit:all', 'maintenance:manage'],
+};
 
-export const authMiddleware = (roles = []) => {
+/**
+ * Verify JWT access token
+ * ถ้า token หมดอายุหรือไม่ถูกต้อง → 401
+ */
+const authenticate = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return errors.unauthorized(res, 'No token provided');
+  }
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = payload;   // { id, username, role }
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return errors.unauthorized(res, 'Token expired');
+    }
+    return errors.unauthorized(res, 'Invalid token');
+  }
+};
+
+/**
+ * Check permission — ใช้หลัง authenticate()
+ * ตัวอย่าง: authorize('vehicles:manage')
+ */
+const authorize = (...requiredPerms) => {
   return (req, res, next) => {
-    const token = req.headers.authorization?.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json(
-        errorResponse("NO_TOKEN", "Unauthorized: No token provided")
-      );
+    const userPerms = PERMISSIONS[req.user.role] || [];
+    const hasAll = requiredPerms.every(p => userPerms.includes(p));
+    if (!hasAll) {
+      return errors.forbidden(res, `Role '${req.user.role}' cannot perform this action`);
     }
-
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-
-      // Role-based access check
-      if (roles.length && !roles.includes(decoded.role)) {
-        return res.status(403).json(
-          errorResponse("FORBIDDEN", "No permission for this resource")
-        );
-      }
-
-      req.user = decoded;
-      next();
-    } catch (err) {
-      if (err.name === "TokenExpiredError") {
-        return res.status(401).json(
-          errorResponse("TOKEN_EXPIRED", "Access token expired, please refresh")
-        );
-      }
-      return res.status(401).json(
-        errorResponse("INVALID_TOKEN", "Invalid token")
-      );
-    }
+    next();
   };
 };
+
+module.exports = { authenticate, authorize, PERMISSIONS };

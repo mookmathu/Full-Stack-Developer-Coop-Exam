@@ -21,7 +21,7 @@ services:
       PMA_HOST: host.docker.internal
       PMA_PORT: 3306
     ports:
-      - "8081:80"
+      - "8082:80"
 
 volumes:
   mysql_data:

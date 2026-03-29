@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trips — Fleet Manager</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="layout">
+  <div id="sidebar-placeholder"></div>
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title"><i class="bi bi-map me-2 text-primary"></i>Trips</span>
+      <button class="btn btn-primary btn-sm" onclick="openTripForm()">
+        <i class="bi bi-plus-lg me-1"></i>New Trip
+      </button>
+    </div>
+
+    <div class="page-content">
+      <!-- Filters -->
+      <div class="filter-bar">
+        <select id="fStatus" class="form-select" style="max-width:160px">
+          <option value="">All Status</option>
+          <option>SCHEDULED</option><option>IN_PROGRESS</option>
+          <option>COMPLETED</option><option>CANCELLED</option>
+        </select>
+        <button class="btn btn-outline-secondary btn-sm" onclick="resetFilters()">
+          <i class="bi bi-x-lg"></i> Reset
+        </button>
+        <span id="resultCount" class="text-muted ms-auto" style="font-size:13px"></span>
+      </div>
+
+      <div class="row g-3">
+        <!-- Trip list -->
+        <div class="col-md-5 col-lg-4">
+          <div class="card" style="max-height:70vh;overflow-y:auto">
+            <div class="card-header"><h6>Trip List</h6></div>
+            <div id="tripList" class="p-2">
+              <div class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trip tracker -->
+        <div class="col-md-7 col-lg-8">
+          <div class="card" id="tripTrackerCard">
+            <div class="card-header">
+              <h6 id="trackerTitle">Select a trip to view details</h6>
+              <div id="trackerActions" class="d-flex gap-2"></div>
+            </div>
+            <div class="card-body" id="trackerBody">
+              <div class="empty-state">
+                <i class="bi bi-map d-block"></i>
+                <p>Click a trip to view checkpoint progress</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Multi-step Trip Form Modal -->
+<div class="modal fade" id="tripModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Create New Trip</h5>
+        <button type="button" class="btn-close" onclick="closeTripForm()"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Step progress bar -->
+        <div class="wizard-steps" id="wizardSteps">
+          <div class="wizard-step active" id="wStep1">
+            <span class="wizard-step-num">1</span>Vehicle & Driver
+          </div>
+          <div class="wizard-step" id="wStep2">
+            <span class="wizard-step-num">2</span>Route & Cargo
+          </div>
+          <div class="wizard-step" id="wStep3">
+            <span class="wizard-step-num">3</span>Review & Confirm
+          </div>
+        </div>
+
+        <div id="formAlert" class="alert d-none"></div>
+
+        <!-- Step 1: Vehicle & Driver -->
+        <div id="step1Panel">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Vehicle *</label>
+              <select id="fVehicle" class="form-select">
+                <option value="">Select vehicle…</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Driver *</label>
+              <select id="fDriver" class="form-select">
+                <option value="">Select driver…</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Route & Cargo -->
+        <div id="step2Panel" class="d-none">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Origin *</label>
+              <input type="text" id="fOrigin" class="form-control" placeholder="กรุงเทพฯ">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Destination *</label>
+              <input type="text" id="fDestination" class="form-control" placeholder="เชียงใหม่">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Distance (km)</label>
+              <input type="number" id="fDistance" class="form-control" min="0">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Cargo Type</label>
+              <select id="fCargoType" class="form-select">
+                <option value="">Select…</option>
+                <option>GENERAL</option><option>FRAGILE</option>
+                <option>HAZARDOUS</option><option>REFRIGERATED</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Cargo Weight (kg)</label>
+              <input type="number" id="fCargoWeight" class="form-control" min="0">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Estimated Duration (min)</label>
+              <input type="number" id="fEstDuration" class="form-control" min="0">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Review -->
+        <div id="step3Panel" class="d-none">
+          <div id="reviewSummary" class="rounded p-3" style="background:#f8fafc;border:1px solid #e2e8f0;font-size:14px;line-height:2"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnBack"   class="btn btn-secondary d-none" onclick="wizardBack()">
+          <i class="bi bi-chevron-left me-1"></i>Back
+        </button>
+        <button id="btnNext"   class="btn btn-primary"          onclick="wizardNext()">
+          Next <i class="bi bi-chevron-right ms-1"></i>
+        </button>
+        <button id="btnSubmit" class="btn btn-success d-none"   onclick="submitTrip()">
+          <span id="submitSpinner" class="spinner-border spinner-border-sm d-none me-1"></span>
+          <i class="bi bi-check-lg me-1"></i>Confirm Trip
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/fleet-api.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  renderSidebar(); initSidebar();
+
+  let currentStep    = 1;
+  const SESSION_KEY  = 'trip_draft_' + Date.now();
+  let tripDraft      = { step1: {}, step2: {} };
+  let selectedTripId = null;
+
+  // ─── Filters ──────────────────────────────────────────────
+  function getFilters() {
+    const p = new URLSearchParams(window.location.search);
+    return { status: p.get('status') || '' };
+  }
+  function resetFilters() {
+    history.replaceState(null,'','?');
+    document.getElementById('fStatus').value = '';
+    loadTrips();
+  }
+  document.getElementById('fStatus').addEventListener('change', e => {
+    const f = new URLSearchParams();
+    if (e.target.value) f.set('status', e.target.value);
+    history.replaceState(null,'','?' + f.toString());
+    loadTrips();
+  });
+
+  // ─── Trip List ────────────────────────────────────────────
+  async function loadTrips() {
+    const { status } = getFilters();
+    const qs = status ? `?status=${status}` : '';
+    try {
+      const trips = await api.json('/trips' + qs);
+      renderTripList(trips || []);
+      document.getElementById('resultCount').textContent = `${(trips||[]).length} trip(s)`;
+    } catch (err) { showToast('Failed to load trips: ' + err.message, 'danger'); }
+  }
+
+  function renderTripList(trips) {
+    const el = document.getElementById('tripList');
+    if (!trips.length) {
+      el.innerHTML = '<div class="empty-state py-4"><i class="bi bi-map d-block"></i>No trips found</div>';
+      return;
+    }
+    el.innerHTML = trips.map(t => `
+      <div class="p-2 mb-1 rounded border cursor-pointer trip-item ${selectedTripId===t.id?'bg-primary-subtle border-primary':''}"
+           style="cursor:pointer" onclick="loadTripTracker('${t.id}')">
+        <div class="d-flex justify-content-between align-items-center">
+          <code style="font-size:11px">${t.id}</code>${statusBadge(t.status)}
+        </div>
+        <div class="fw-semibold" style="font-size:13px">${t.license_plate}</div>
+        <div class="text-muted" style="font-size:12px">${t.origin} → ${t.destination}</div>
+      </div>`).join('');
+  }
+
+  // ─── Trip Tracker ─────────────────────────────────────────
+  async function loadTripTracker(id) {
+    selectedTripId = id;
+    loadTrips();  // re-render list to highlight
+    try {
+      const trip = await api.json('/trips/' + id);
+      renderTracker(trip);
+    } catch (err) { showToast('Failed to load trip: ' + err.message, 'danger'); }
+  }
+
+  function renderTracker(trip) {
+    document.getElementById('trackerTitle').textContent =
+      `${trip.id} — ${trip.origin} → ${trip.destination}`;
+
+    // Action buttons
+    const actions = document.getElementById('trackerActions');
+    actions.innerHTML = '';
+    if (trip.status === 'SCHEDULED') {
+      actions.innerHTML += `<button class="btn btn-sm btn-primary" onclick="startTrip('${trip.id}')">Start Trip</button>`;
+    }
+    if (trip.status === 'IN_PROGRESS') {
+      actions.innerHTML += `<button class="btn btn-sm btn-success" onclick="completeTrip('${trip.id}')">Complete Trip</button>`;
+    }
+
+    const body = document.getElementById('trackerBody');
+    const checkpoints = trip.checkpoints || [];
+
+    const infoHtml = `
+      <div class="row g-2 mb-3 p-2 rounded" style="background:#f8fafc;font-size:13px">
+        <div class="col-6 col-md-3"><span class="text-muted">Vehicle</span><br><strong>${trip.license_plate||'—'}</strong></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Driver</span><br><strong>${trip.driver_name||'—'}</strong></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Distance</span><br><strong>${trip.distance_km||'—'} km</strong></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Status</span><br>${statusBadge(trip.status)}</div>
+      </div>`;
+
+    if (!checkpoints.length) {
+      body.innerHTML = infoHtml + '<div class="empty-state py-4"><i class="bi bi-map-fill d-block"></i>No checkpoints</div>';
+      return;
+    }
+
+    const stepsHtml = `
+      <h6 class="mb-3">Checkpoint Progress</h6>
+      <div class="step-indicator">
+        ${checkpoints.map((chk, i) => {
+          const cls = chk.status === 'DEPARTED' ? 'step-completed'
+                    : chk.status === 'ARRIVED'  ? 'step-active'
+                    : 'step-pending';
+          const dotIcon = chk.status === 'DEPARTED' ? '✓' : (i + 1);
+          const canUpdate = trip.status === 'IN_PROGRESS' &&
+                            (chk.status === 'PENDING' || chk.status === 'ARRIVED');
+
+          let nextStatus = chk.status === 'PENDING'  ? 'ARRIVED'
+                         : chk.status === 'ARRIVED'  ? 'DEPARTED' : null;
+          const actionBtn = canUpdate && nextStatus
+            ? `<button class="btn btn-sm btn-outline-primary" id="btn-chk-${chk.id}"
+                       onclick="updateCheckpoint('${chk.id}','${nextStatus}','${trip.id}')">
+                 Mark as ${nextStatus}
+               </button>`
+            : '';
+
+          return `
+            <div class="step-item ${cls}" id="step-${chk.id}">
+              <div class="step-dot">${dotIcon}</div>
+              <div class="step-body">
+                <div class="step-title">${chk.location_name}</div>
+                <div class="step-sub">
+                  ${chk.purpose || ''} • ${statusBadge(chk.status)}
+                </div>
+                ${chk.arrived_at  ? `<div class="step-sub">Arrived: ${fmtDateTime(chk.arrived_at)}</div>` : ''}
+                ${chk.departed_at ? `<div class="step-sub">Departed: ${fmtDateTime(chk.departed_at)}</div>` : ''}
+                ${chk.notes ? `<div class="step-sub text-muted">${chk.notes}</div>` : ''}
+                <div class="step-actions" id="action-${chk.id}">
+                  ${actionBtn}
+                  <span id="err-${chk.id}" class="text-danger" style="font-size:12px"></span>
+                </div>
+              </div>
+            </div>`;
+        }).join('')}
+      </div>`;
+
+    body.innerHTML = infoHtml + stepsHtml;
+  }
+
+  // ─── Checkpoint update with optimistic UI ─────────────────
+  async function updateCheckpoint(chkId, newStatus, tripId) {
+    const btn    = document.getElementById(`btn-chk-${chkId}`);
+    const errEl  = document.getElementById(`err-${chkId}`);
+    const stepEl = document.getElementById(`step-${chkId}`);
+    const origBtnHtml = btn.innerHTML;
+    errEl.textContent = '';
+
+    // Optimistic update
+    const prevClass = stepEl.className;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Updating…';
+    stepEl.classList.remove('step-pending','step-active');
+    stepEl.classList.add(newStatus === 'ARRIVED' ? 'step-active' : 'step-completed');
+
+    // Simulate network delay 300-800ms (as per spec)
+    const delay = 300 + Math.random() * 500;
+    await new Promise(r => setTimeout(r, delay));
+
+    // Simulate 30% failure
+    const shouldFail = Math.random() < 0.3;
+
+    if (shouldFail) {
+      // Rollback
+      stepEl.className = prevClass;
+      btn.disabled  = false;
+      btn.innerHTML = origBtnHtml;
+      errEl.textContent = `Failed to update. Please try again.`;
+      showToast('Checkpoint update failed. Retry or check connection.', 'danger');
+      return;
+    }
+
+    try {
+      await api.json(`/checkpoints/${chkId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      showToast(`Checkpoint marked as ${newStatus}`);
+      // Reload tracker to get fresh state
+      await loadTripTracker(tripId);
+    } catch (err) {
+      // Rollback on server error
+      stepEl.className = prevClass;
+      btn.disabled  = false;
+      btn.innerHTML = origBtnHtml;
+      errEl.textContent = err.message;
+    }
+  }
+
+  // ─── Start / Complete Trip ────────────────────────────────
+  async function startTrip(id) {
+    try {
+      await api.json(`/trips/${id}/status`, {
+        method: 'PATCH', body: JSON.stringify({ status: 'IN_PROGRESS' }),
+      });
+      showToast('Trip started!');
+      await loadTripTracker(id);
+      loadTrips();
+    } catch (err) { showToast(err.message, 'danger'); }
+  }
+
+  async function completeTrip(id) {
+    if (!confirm('Complete this trip? Mileage will be updated.')) return;
+    try {
+      const result = await api.json(`/trips/${id}/complete`, { method: 'PATCH', body: '{}' });
+      showToast(`Trip completed! Vehicle mileage: ${result.vehicle_mileage_updated} km`);
+      if (result.maintenance_created) {
+        showToast('Maintenance auto-created — vehicle sent for service', 'warning');
+      }
+      await loadTripTracker(id);
+      loadTrips();
+    } catch (err) { showToast(err.message, 'danger'); }
+  }
+
+  // ─── Multi-step Trip Form ─────────────────────────────────
+  async function openTripForm() {
+    currentStep = 1;
+    tripDraft   = { step1: {}, step2: {} };
+    updateWizardUI();
+
+    // Load vehicles & drivers for Step 1
+    try {
+      const [vehicles, drivers] = await Promise.all([
+        api.json('/vehicles?status=IDLE'),
+        api.json('/drivers'),
+      ]);
+      const vSel = document.getElementById('fVehicle');
+      const dSel = document.getElementById('fDriver');
+      vSel.innerHTML = '<option value="">Select vehicle…</option>' +
+        (vehicles||[]).map(v => `<option value="${v.id}">${v.license_plate} — ${v.brand||''} ${v.model||''}</option>`).join('');
+      dSel.innerHTML = '<option value="">Select driver…</option>' +
+        (drivers||[]).filter(d=>d.status==='available').map(d =>
+          `<option value="${d.id}">${d.name} (${d.license_number})</option>`).join('');
+    } catch {}
+
+    // Restore draft from API if exists
+    try {
+      const draft = await api.json(`/trip-drafts/${SESSION_KEY}`);
+      if (draft) {
+        tripDraft = { step1: draft.step1_data||{}, step2: draft.step2_data||{} };
+        currentStep = draft.current_step || 1;
+        restoreFormFromDraft();
+      }
+    } catch {}
+
+    new bootstrap.Modal(document.getElementById('tripModal')).show();
+  }
+
+  function closeTripForm() {
+    bootstrap.Modal.getInstance(document.getElementById('tripModal')).hide();
+    api.delete(`/trip-drafts/${SESSION_KEY}`).catch(()=>{});
+  }
+
+  function collectStep1() {
+    return {
+      vehicle_id: document.getElementById('fVehicle').value,
+      driver_id:  document.getElementById('fDriver').value,
+    };
+  }
+  function collectStep2() {
+    return {
+      origin:               document.getElementById('fOrigin').value,
+      destination:          document.getElementById('fDestination').value,
+      distance_km:          +document.getElementById('fDistance').value || null,
+      cargo_type:           document.getElementById('fCargoType').value || null,
+      cargo_weight_kg:      +document.getElementById('fCargoWeight').value || null,
+      estimated_duration_min: +document.getElementById('fEstDuration').value || null,
+    };
+  }
+
+  function restoreFormFromDraft() {
+    if (tripDraft.step1.vehicle_id) document.getElementById('fVehicle').value    = tripDraft.step1.vehicle_id;
+    if (tripDraft.step1.driver_id)  document.getElementById('fDriver').value     = tripDraft.step1.driver_id;
+    if (tripDraft.step2.origin)     document.getElementById('fOrigin').value     = tripDraft.step2.origin;
+    if (tripDraft.step2.destination)document.getElementById('fDestination').value= tripDraft.step2.destination;
+    if (tripDraft.step2.distance_km)document.getElementById('fDistance').value   = tripDraft.step2.distance_km;
+  }
+
+  async function saveDraftToApi() {
+    await api.put(`/trip-drafts/${SESSION_KEY}`, {
+      step1_data:   tripDraft.step1,
+      step2_data:   tripDraft.step2,
+      current_step: currentStep,
+    }).catch(()=>{});
+  }
+
+  function showFormAlert(msg, type='danger') {
+    const el = document.getElementById('formAlert');
+    el.className = `alert alert-${type}`;
+    el.textContent = msg;
+  }
+
+  async function wizardNext() {
+    document.getElementById('formAlert').classList.add('d-none');
+
+    if (currentStep === 1) {
+      const d = collectStep1();
+      if (!d.vehicle_id || !d.driver_id) {
+        showFormAlert('Please select both Vehicle and Driver');
+        return;
+      }
+      tripDraft.step1 = d;
+      await saveDraftToApi();
+      currentStep = 2;
+    } else if (currentStep === 2) {
+      const d = collectStep2();
+      if (!d.origin || !d.destination) {
+        showFormAlert('Origin and Destination are required');
+        return;
+      }
+      tripDraft.step2 = d;
+      await saveDraftToApi();
+      currentStep = 3;
+
+      // Build review
+      const vLabel = document.getElementById('fVehicle').options[document.getElementById('fVehicle').selectedIndex]?.text || '—';
+      const dLabel = document.getElementById('fDriver').options[document.getElementById('fDriver').selectedIndex]?.text || '—';
+      document.getElementById('reviewSummary').innerHTML = `
+        <div class="row g-2">
+          <div class="col-6"><b>Vehicle:</b> ${vLabel}</div>
+          <div class="col-6"><b>Driver:</b> ${dLabel}</div>
+          <div class="col-6"><b>Origin:</b> ${d.origin}</div>
+          <div class="col-6"><b>Destination:</b> ${d.destination}</div>
+          <div class="col-4"><b>Distance:</b> ${d.distance_km||'—'} km</div>
+          <div class="col-4"><b>Cargo:</b> ${d.cargo_type||'—'}</div>
+          <div class="col-4"><b>Weight:</b> ${d.cargo_weight_kg||'—'} kg</div>
+        </div>`;
+    }
+    updateWizardUI();
+  }
+
+  async function wizardBack() {
+    if (currentStep > 1) {
+      currentStep--;
+      updateWizardUI();
+      await saveDraftToApi();
+    }
+  }
+
+  function updateWizardUI() {
+    ['step1Panel','step2Panel','step3Panel'].forEach((id,i) => {
+      document.getElementById(id).classList.toggle('d-none', i+1 !== currentStep);
+    });
+    document.getElementById('btnBack').classList.toggle('d-none', currentStep === 1);
+    document.getElementById('btnNext').classList.toggle('d-none', currentStep === 3);
+    document.getElementById('btnSubmit').classList.toggle('d-none', currentStep !== 3);
+
+    for (let i=1; i<=3; i++) {
+      const el = document.getElementById('wStep' + i);
+      el.classList.remove('active','done');
+      if (i === currentStep) el.classList.add('active');
+      else if (i < currentStep) el.classList.add('done');
+    }
+  }
+
+  async function submitTrip() {
+    const spinner = document.getElementById('submitSpinner');
+    spinner.classList.remove('d-none');
+    document.getElementById('btnSubmit').disabled = true;
+
+    try {
+      await api.json('/trips', {
+        method: 'POST',
+        body: JSON.stringify({ ...tripDraft.step1, ...tripDraft.step2 }),
+      });
+      await api.delete(`/trip-drafts/${SESSION_KEY}`).catch(()=>{});
+      bootstrap.Modal.getInstance(document.getElementById('tripModal')).hide();
+      showToast('Trip created successfully!');
+      loadTrips();
+    } catch (err) {
+      showFormAlert(err.message);
+    } finally {
+      spinner.classList.add('d-none');
+      document.getElementById('btnSubmit').disabled = false;
+    }
+  }
+
+  // ─── Init ─────────────────────────────────────────────────
+  const initFilters = getFilters();
+  document.getElementById('fStatus').value = initFilters.status;
+  loadTrips();
+
+  // Open tracker if ?id= in URL
+  const urlId = new URLSearchParams(window.location.search).get('id');
+  if (urlId) loadTripTracker(urlId);
+</script>
+</body>
+</html>

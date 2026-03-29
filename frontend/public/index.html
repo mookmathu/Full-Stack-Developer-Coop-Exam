@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fleet Manager — Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+
+<body class="login-body d-flex align-items-center justify-content-center vh-100">
+
+  <div class="login-card shadow-lg p-4 p-md-5 rounded-4">
+    <!-- Logo / Brand -->
+    <div class="text-center mb-4">
+      <div class="brand-icon mb-3">
+        <i class="bi bi-truck-front-fill fs-1 text-primary"></i>
+      </div>
+      <h4 class="fw-semibold text-dark mb-0">Fleet Manager</h4>
+      <p class="text-muted small">Logistics Operations Platform</p>
+    </div>
+
+    <!-- Alert -->
+    <div id="loginAlert" class="alert d-none mb-3" role="alert"></div>
+
+    <!-- Form -->
+    <div id="loginForm">
+      <div class="mb-3">
+        <label class="form-label fw-medium">Username</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-person"></i></span>
+          <input type="text" id="username" class="form-control" placeholder="กรอก username" autocomplete="username">
+        </div>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-medium">Password</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-lock"></i></span>
+          <input type="password" id="password" class="form-control" placeholder="กรอก password"
+            autocomplete="current-password">
+          <button class="btn btn-outline-secondary" type="button" id="togglePwd">
+            <i class="bi bi-eye" id="eyeIcon"></i>
+          </button>
+        </div>
+      </div>
+      <button id="loginBtn" class="btn btn-primary w-100 py-2 fw-medium" onclick="doLogin()">
+        <span id="loginSpinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+        เข้าสู่ระบบ
+      </button>
+    </div>
+
+    <p class="text-center text-muted small mt-4 mb-0">
+      Demo: admin / admin1234
+    </p>
+  </div>
+
+  <script>
+    const API = 'http://localhost:3000';
+    let accessToken = null;
+
+    // Toggle password visibility
+    document.getElementById('togglePwd').addEventListener('click', () => {
+      const pwd = document.getElementById('password');
+      const icon = document.getElementById('eyeIcon');
+      const show = pwd.type === 'password';
+      pwd.type = show ? 'text' : 'password';
+      icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+
+    // Enter key to login
+    ['username', 'password'].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') doLogin();
+      });
+    });
+
+    async function doLogin() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const btn = document.getElementById('loginBtn');
+      const spinner = document.getElementById('loginSpinner');
+      const alert = document.getElementById('loginAlert');
+
+      if (!username || !password) {
+        showAlert('กรุณากรอก username และ password', 'danger');
+        return;
+      }
+
+      btn.disabled = true;
+      spinner.classList.remove('d-none');
+      alert.classList.add('d-none');
+
+      try {
+        const res = await fetch(`${API}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showAlert(data.error?.message || 'เข้าสู่ระบบไม่สำเร็จ', 'danger');
+          return;
+        }
+
+        // Store access token in memory
+        accessToken = data.data.accessToken;
+        sessionStorage.setItem('user', JSON.stringify(data.data.user));
+
+        // Store token in sessionStorage แล้ว redirect
+        sessionStorage.setItem('accessToken', data.data.accessToken);
+        window.location.href = '/pages/dashboard.html';
+
+      } catch (err) {
+        showAlert('ไม่สามารถเชื่อมต่อ server ได้', 'danger');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+      }
+    }
+
+    function showAlert(msg, type) {
+      const el = document.getElementById('loginAlert');
+      el.className = `alert alert-${type}`;
+      el.textContent = msg;
+    }
+
+    // Check if already logged in
+    const savedUser = sessionStorage.getItem('user');
+    if (savedUser) window.location.href = '/pages/dashboard.html';
+  </script>
+</body>
+
+</html>
