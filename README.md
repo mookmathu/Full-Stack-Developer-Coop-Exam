@@ -6,6 +6,26 @@
 
 ---
 
+## Tech Stack
+# Backend #
+- Node.js - ตัวรันโปรแกรมฝั่ง Server
+- Express.js - Framework สำหรับสร้าง API
+- MySQL — ฐานข้อมูล
+- JWT + Refresh Token — ระบบ Login
+- bcrypt — เข้ารหัสรหัสผ่านก่อนบันทึกลงฐานข้อมูล
+- nodemon — รีสตาร์ท Server อัตโนมัติตอน Development
+
+# Frontend #
+- HTML / CSS / JavaScript 
+- Bootstrap 5.3.2 — ใช้จัดการ Layout และ UI Components
+- Bootstrap Icons 1.11.3 — ใช้สำหรับไอคอนต่าง ๆ
+
+# Infrastructure #
+- Docker + Docker Compose — รัน MySQL ในคอนเทนเนอร์
+- phpMyAdmin — หน้าเว็บสำหรับจัดการฐานข้อมูล
+
+---
+
 ## Step 1: Setup MySQL Database
 
 1. เปิด phpMyAdmin ที่ `http://localhost:8080` (หรือ port ที่ใช้)
