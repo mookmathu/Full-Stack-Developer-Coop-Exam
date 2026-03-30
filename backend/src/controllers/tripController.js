@@ -6,10 +6,25 @@ const audit = require('../middleware/auditLog');
 // POST /trips
 const createTrip = async (req, res) => {
   const { vehicle_id, driver_id, origin, destination, distance_km,
-          cargo_type, cargo_weight_kg, estimated_duration_min } = req.body;
+          cargo_type, cargo_weight_kg, estimated_duration_min,
+          checkpoints } = req.body;
 
   if (!vehicle_id || !driver_id || !origin || !destination) {
     return errors.validation(res, 'vehicle_id, driver_id, origin, destination are required');
+  }
+
+  if (!distance_km || Number(distance_km) <= 0) {
+    return errors.validation(res, 'distance_km is required and must be greater than 0');
+  }
+
+  // ต้องมี checkpoint อย่างน้อย 1 จุด
+  if (!checkpoints || !Array.isArray(checkpoints) || checkpoints.length === 0) {
+    return errors.validation(res, 'At least 1 checkpoint is required');
+  }
+  for (const [i, chk] of checkpoints.entries()) {
+    if (!chk.location_name) {
+      return errors.validation(res, `Checkpoint ${i + 1}: location_name is required`);
+    }
   }
 
   const conn = await db.getConnection();
@@ -44,7 +59,16 @@ const createTrip = async (req, res) => {
       return errors.conflict(res, `Driver's license expired on ${drv[0].license_expires_at}. Cannot assign trip.`);
     }
 
-    const id = 'trp_' + uuidv4().slice(0, 8);
+    // สร้าง id แบบ sequential เช่น trp_004, trp_005
+    const [lastRow] = await conn.execute(
+      `SELECT id FROM trips WHERE id LIKE 'trp_%' ORDER BY id DESC LIMIT 1`
+    );
+    let nextNum = 1;
+    if (lastRow.length) {
+      const lastNum = parseInt(lastRow[0].id.replace('trp_', ''), 10);
+      if (!isNaN(lastNum)) nextNum = lastNum + 1;
+    }
+    const id = 'trp_' + String(nextNum).padStart(3, '0');
     await conn.execute(
       `INSERT INTO trips (id, vehicle_id, driver_id, status, origin, destination,
         distance_km, cargo_type, cargo_weight_kg, estimated_duration_min, created_by)
@@ -52,6 +76,25 @@ const createTrip = async (req, res) => {
       [id, vehicle_id, driver_id, origin, destination, distance_km||null,
        cargo_type||null, cargo_weight_kg||null, estimated_duration_min||null, req.user.id]
     );
+
+    // Insert checkpoints ใน transaction เดียวกัน — ใช้ sequential id แบบ chk_001, chk_002
+    const [lastChk] = await conn.execute(
+      `SELECT id FROM checkpoints WHERE id LIKE 'chk_%' AND id REGEXP '^chk_[0-9]+$' ORDER BY id DESC LIMIT 1`
+    );
+    let nextChkNum = 1;
+    if (lastChk.length) {
+      const lastNum = parseInt(lastChk[0].id.replace('chk_', ''), 10);
+      if (!isNaN(lastNum)) nextChkNum = lastNum + 1;
+    }
+
+    for (const [i, chk] of checkpoints.entries()) {
+      const chkId = 'chk_' + String(nextChkNum + i).padStart(3, '0');
+      await conn.execute(
+        `INSERT INTO checkpoints (id, trip_id, sequence, status, location_name, purpose, notes)
+         VALUES (?, ?, ?, 'PENDING', ?, ?, ?)`,
+        [chkId, id, i + 1, chk.location_name, chk.purpose || null, chk.notes || null]
+      );
+    }
 
     await conn.commit();
 
@@ -90,7 +133,22 @@ const completeTrip = async (req, res) => {
       return errors.conflict(res, `Only IN_PROGRESS trips can be completed. Current status: ${trip.status}`);
     }
 
-    // 1. Complete the trip
+    // 1. ตรวจสอบ checkpoint ทุกจุดต้อง DEPARTED หมดก่อน complete
+    const [checkpoints] = await conn.execute(
+      'SELECT * FROM checkpoints WHERE trip_id = ? ORDER BY sequence ASC',
+      [id]
+    );
+    const notDone = checkpoints.filter(c => c.status !== 'DEPARTED' && c.status !== 'SKIPPED');
+    if (notDone.length > 0) {
+      await conn.rollback();
+      const first = notDone[0];
+      const nextAction = first.status === 'PENDING' ? 'Mark as ARRIVED' : 'Mark as DEPARTED';
+      return errors.conflict(res,
+        `Cannot complete trip. Checkpoint "${first.location_name}" (sequence ${first.sequence}) is still ${first.status}. Please "${nextAction}" first.`
+      );
+    }
+
+    // 2. Complete the trip
     await conn.execute(
       `UPDATE trips SET status = 'COMPLETED', ended_at = NOW() WHERE id = ?`, [id]
     );
@@ -112,7 +170,15 @@ const completeTrip = async (req, res) => {
     // 4. Auto-create maintenance record ถ้าเข้า MAINTENANCE
     let maintenanceId = null;
     if (needsMaintenance) {
-      maintenanceId = 'mnt_' + uuidv4().slice(0, 8);
+      const [lastMnt] = await conn.execute(
+        `SELECT id FROM maintenances WHERE id LIKE 'mnt_%' ORDER BY id DESC LIMIT 1`
+      );
+      let nextMntNum = 1;
+      if (lastMnt.length) {
+        const lastMntNum = parseInt(lastMnt[0].id.replace('mnt_', ''), 10);
+        if (!isNaN(lastMntNum)) nextMntNum = lastMntNum + 1;
+      }
+      maintenanceId = 'mnt_' + String(nextMntNum).padStart(3, '0');
       await conn.execute(
         `INSERT INTO maintenances (id, vehicle_id, status, type, scheduled_at, mileage_at_service)
          VALUES (?, ?, 'SCHEDULED', 'INSPECTION', NOW(), ?)`,
@@ -147,6 +213,7 @@ const completeTrip = async (req, res) => {
 
 // PATCH /checkpoints/:id/status
 // Sequence: PENDING → ARRIVED → DEPARTED เท่านั้น
+// และต้อง DEPARTED จุดก่อนหน้าให้เรียบร้อยก่อนจึงจะ mark จุดถัดไปได้
 const updateCheckpoint = async (req, res) => {
   const { id } = req.params;
   const { status: newStatus } = req.body;
@@ -166,6 +233,20 @@ const updateCheckpoint = async (req, res) => {
     if (newStatus !== expected) {
       return errors.conflict(res,
         `Cannot change status from ${chk.status} to ${newStatus}. Next required status: ${expected}`
+      );
+    }
+
+    // ตรวจสอบว่า checkpoint ก่อนหน้า (sequence น้อยกว่า) ต้อง DEPARTED ทั้งหมดก่อน
+    const [prevCheckpoints] = await db.execute(
+      `SELECT * FROM checkpoints WHERE trip_id = ? AND sequence < ? AND status NOT IN ('DEPARTED','SKIPPED') ORDER BY sequence ASC`,
+      [chk.trip_id, chk.sequence]
+    );
+    if (prevCheckpoints.length > 0) {
+      const blocking = prevCheckpoints[0];
+      return errors.conflict(res,
+        `Cannot update checkpoint "${chk.location_name}". ` +
+        `Please complete checkpoint "${blocking.location_name}" (sequence ${blocking.sequence}) ` +
+        `by marking it as DEPARTED first.`
       );
     }
 
@@ -236,4 +317,51 @@ const getTrip = async (req, res) => {
   }
 };
 
-module.exports = { createTrip, completeTrip, updateCheckpoint, listTrips, getTrip };
+// PATCH /trips/:id/start
+const startTrip = async (req, res) => {
+  const { id } = req.params;
+  const conn = await db.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [trips] = await conn.execute('SELECT * FROM trips WHERE id = ? FOR UPDATE', [id]);
+    if (!trips.length) { await conn.rollback(); return errors.notFound(res, 'Trip'); }
+
+    const trip = trips[0];
+    if (trip.status !== 'SCHEDULED') {
+      await conn.rollback();
+      return errors.conflict(res, `Only SCHEDULED trips can be started. Current status: ${trip.status}`);
+    }
+
+    await conn.execute(
+      `UPDATE trips SET status = 'IN_PROGRESS', started_at = NOW() WHERE id = ?`, [id]
+    );
+
+    // Update vehicle status to ACTIVE
+    await conn.execute(
+      `UPDATE vehicles SET status = 'ACTIVE' WHERE id = ?`, [trip.vehicle_id]
+    );
+
+    await conn.commit();
+
+    await audit.log({
+      userId: req.user.id, action: audit.ACTIONS.TRIP_STATUS_CHANGED,
+      resourceType: 'trip', resourceId: id,
+      oldValues: { status: 'SCHEDULED' }, newValues: { status: 'IN_PROGRESS' },
+      ipAddress: req.ip,
+    });
+
+    const [updated] = await db.execute('SELECT * FROM trips WHERE id = ?', [id]);
+    return sendSuccess(res, updated[0]);
+
+  } catch (err) {
+    await conn.rollback();
+    console.error('[Trip] startTrip error:', err);
+    return errors.server(res);
+  } finally {
+    conn.release();
+  }
+};
+
+module.exports = { createTrip, startTrip, completeTrip, updateCheckpoint, listTrips, getTrip };

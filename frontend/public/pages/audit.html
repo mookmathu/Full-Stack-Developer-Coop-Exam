@@ -31,6 +31,9 @@
         </select>
         <input type="date" id="fDateFrom" class="form-control" style="max-width:150px" onchange="loadLogs()">
         <input type="date" id="fDateTo"   class="form-control" style="max-width:150px" onchange="loadLogs()">
+        <button class="btn btn-outline-secondary btn-sm" onclick="resetFilters()">
+          <i class="bi bi-x-lg"></i> Reset
+        </button>
       </div>
 
       <div class="card">
@@ -61,6 +64,14 @@
     VEHICLE_CREATED:'primary', VEHICLE_UPDATED:'info', VEHICLE_DELETED:'danger',
     TRIP_CREATED:'primary', TRIP_COMPLETED:'success', CHECKPOINT_UPDATED:'info',
   };
+
+  function resetFilters() {
+    document.getElementById('fAction').value   = '';
+    document.getElementById('fResType').value  = '';
+    document.getElementById('fDateFrom').value = '';
+    document.getElementById('fDateTo').value   = '';
+    loadLogs();
+  }
 
   async function loadLogs() {
     const qs = new URLSearchParams();

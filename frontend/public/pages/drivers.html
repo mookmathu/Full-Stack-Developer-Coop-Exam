@@ -58,6 +58,9 @@
           <div class="col-md-6">
             <label class="form-label">License Expires *</label>
             <input type="date" id="dExpiry" class="form-control">
+            <div class="form-text text-danger d-none" id="dExpiryError">
+              <i class="bi bi-exclamation-circle me-1"></i>License must not be expired
+            </div>
           </div>
           <div class="col-12">
             <label class="form-label">Phone</label>
@@ -78,6 +81,24 @@
 <script src="/js/sidebar.js"></script>
 <script>
   renderSidebar(); initSidebar();
+
+  // ตั้ง min date ของ License Expires = วันนี้ (ไม่ให้เลือกวันที่หมดอายุแล้ว)
+  document.getElementById('addDriverModal').addEventListener('show.bs.modal', () => {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('dExpiry').min = today;
+    // reset form & error
+    ['dName','dLicense','dExpiry','dPhone'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('driverAlert').classList.add('d-none');
+    document.getElementById('dExpiryError').classList.add('d-none');
+    document.getElementById('dExpiry').classList.remove('is-invalid');
+  });
+
+  document.getElementById('dExpiry').addEventListener('change', function() {
+    const today = new Date().toISOString().split('T')[0];
+    const expired = this.value && this.value < today;
+    document.getElementById('dExpiryError').classList.toggle('d-none', !expired);
+    this.classList.toggle('is-invalid', expired);
+  });
 
   async function loadDrivers() {
     try {
@@ -111,6 +132,16 @@
   async function saveDriver() {
     const alertEl = document.getElementById('driverAlert');
     alertEl.classList.add('d-none');
+
+    // ตรวจสอบใบขับขี่ไม่หมดอายุก่อน submit
+    const expiry = document.getElementById('dExpiry').value;
+    const today  = new Date().toISOString().split('T')[0];
+    if (expiry && expiry < today) {
+      document.getElementById('dExpiryError').classList.remove('d-none');
+      document.getElementById('dExpiry').classList.add('is-invalid');
+      return;
+    }
+
     try {
       await api.json('/drivers', {
         method: 'POST',

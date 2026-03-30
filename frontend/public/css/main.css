@@ -3,6 +3,8 @@
    Theme: Blue / White
    ============================================================ */
 
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap');
+
 :root {
   --primary:       #1a56db;
   --primary-dark:  #1e429f;
@@ -27,7 +29,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Segoe UI', 'Noto Sans Thai', sans-serif;
+  font-family: 'Segoe UI', 'Google Sans', 'Noto Sans Thai', sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;

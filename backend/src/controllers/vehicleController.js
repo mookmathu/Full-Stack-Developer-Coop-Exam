@@ -38,7 +38,15 @@ const createVehicle = async (req, res) => {
       if (!drv.length) return errors.notFound(res, 'Driver');
     }
 
-    const id = 'veh_' + uuidv4().slice(0, 8);
+    const [lastRow] = await db.execute(
+      `SELECT id FROM vehicles WHERE id LIKE 'veh_%' ORDER BY id DESC LIMIT 1`
+    );
+    let nextNum = 1;
+    if (lastRow.length) {
+      const lastNum = parseInt(lastRow[0].id.replace('veh_', ''), 10);
+      if (!isNaN(lastNum)) nextNum = lastNum + 1;
+    }
+    const id = 'veh_' + String(nextNum).padStart(3, '0');
     await db.execute(
       `INSERT INTO vehicles (id, license_plate, type, driver_id, brand, model, year, fuel_type,
         mileage_km, last_service_km, next_service_km)

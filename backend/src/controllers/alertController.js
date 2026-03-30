@@ -44,8 +44,10 @@ const getDashboardDb = db;
 const getSummary = async (req, res) => {
   try {
     const [[totalVehicles]] = await getDashboardDb.execute('SELECT COUNT(*) as count FROM vehicles WHERE status != "RETIRED"');
+    // Active Trips Today = trip ที่กำลังวิ่งอยู่ตอนนี้ (IN_PROGRESS ทั้งหมด)
+    // ไม่กรองด้วย created_at เพราะ trip ที่เริ่มเมื่อวานแต่ยังวิ่งอยู่ต้องนับด้วย
     const [[activeTrips]] = await getDashboardDb.execute(
-      'SELECT COUNT(*) as count FROM trips WHERE status = "IN_PROGRESS" AND DATE(created_at) = CURDATE()'
+      'SELECT COUNT(*) as count FROM trips WHERE status = "IN_PROGRESS"'
     );
     const [[totalDistance]] = await getDashboardDb.execute(
       'SELECT COALESCE(SUM(distance_km), 0) as total FROM trips WHERE status = "COMPLETED" AND DATE(ended_at) = CURDATE()'

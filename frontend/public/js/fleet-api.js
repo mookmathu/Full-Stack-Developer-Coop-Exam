@@ -118,6 +118,7 @@ function fmtDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('th-TH', {
     timeZone: 'Asia/Bangkok',
+    calendar: 'gregory',
     day: '2-digit', month: 'short', year: 'numeric',
   });
 }
@@ -125,6 +126,7 @@ function fmtDateTime(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('th-TH', {
     timeZone: 'Asia/Bangkok',
+    calendar: 'gregory',
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });

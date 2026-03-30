@@ -41,7 +41,7 @@
 2. แก้ค่าให้ตรงกับ Docker MySQL:
    ```
    DB_HOST=localhost
-   DB_PORT=3306          # หรือ port ที่ map ออกมา
+   DB_PORT=3307          # หรือ port ที่ map ออกมา
    DB_USER=root
    DB_PASSWORD=your_docker_password
    DB_NAME=fleet_db

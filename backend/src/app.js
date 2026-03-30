@@ -1,3 +1,4 @@
+process.env.TZ = 'Asia/Bangkok';   // ตั้ง timezone ของ Node.js process ให้เป็น Bangkok
 require('dotenv').config();
 const express      = require('express');
 const cors         = require('cors');
@@ -80,6 +81,7 @@ app.patch ('/drivers/:id',            authorize('drivers:manage'), driverCtrl.up
 app.post  ('/trips',                  authorize('trips:manage'), tripCtrl.createTrip);
 app.get   ('/trips',                  tripCtrl.listTrips);
 app.get   ('/trips/:id',              tripCtrl.getTrip);
+app.patch ('/trips/:id/start',        authorize('trips:manage'), tripCtrl.startTrip);
 app.patch ('/trips/:id/complete',     authorize('trips:manage'), tripCtrl.completeTrip);
 
 // Checkpoints
@@ -127,4 +129,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-

@@ -11,11 +11,24 @@ const createDriver = async (req, res) => {
   if (!name || !license_number || !license_expires_at) {
     return errors.validation(res, 'name, license_number, license_expires_at are required');
   }
+  // ตรวจสอบใบขับขี่ไม่หมดอายุ
+  if (new Date(license_expires_at) < new Date()) {
+    return errors.validation(res, 'Cannot add driver with an expired license. Please renew the license first.');
+  }
+
   try {
     const [dup] = await db.execute('SELECT id FROM drivers WHERE license_number = ?', [license_number]);
     if (dup.length) return errors.conflict(res, 'License number already exists');
 
-    const id = 'drv_' + uuidv4().slice(0, 8);
+    const [lastRow] = await db.execute(
+      `SELECT id FROM drivers WHERE id LIKE 'drv_%' ORDER BY id DESC LIMIT 1`
+    );
+    let nextNum = 1;
+    if (lastRow.length) {
+      const lastNum = parseInt(lastRow[0].id.replace('drv_', ''), 10);
+      if (!isNaN(lastNum)) nextNum = lastNum + 1;
+    }
+    const id = 'drv_' + String(nextNum).padStart(3, '0');
     await db.execute(
       'INSERT INTO drivers (id, name, license_number, license_expires_at, phone) VALUES (?, ?, ?, ?, ?)',
       [id, name, license_number, license_expires_at, phone||null]

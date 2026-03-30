@@ -100,6 +100,28 @@ const RULE_CHECKERS = {
     }));
   },
 
+  // Rule 5: cargo_weight_kg เกิน threshold → "Heavy Cargo Warning"
+  heavy_cargo_warning: async (rule, config) => {
+    const threshold = config.threshold_kg || 1000;
+    const [rows] = await db.execute(
+      `SELECT id, vehicle_id, driver_id, origin, destination, cargo_weight_kg
+       FROM trips
+       WHERE status IN ('SCHEDULED','IN_PROGRESS')
+         AND cargo_weight_kg > ?`,
+      [threshold]
+    );
+    return rows.map(t => ({
+      rule_id: rule.id,
+      affected_resource_type: 'trip',
+      affected_resource_id: t.id,
+      message: (config.message_tpl || 'Trip {id} has heavy cargo: {weight} kg (limit: {limit} kg)')
+        .replace('{id}', t.id)
+        .replace('{weight}', t.cargo_weight_kg)
+        .replace('{limit}', threshold),
+      severity: rule.severity,
+    }));
+  },
+
   // ============================================================
   // เพิ่ม rule ใหม่ที่นี่ถ้าต้องการ logic ซับซ้อน
   // หรือถ้า logic ง่ายมาก ก็แค่ INSERT ลง alert_rules + เขียน checker

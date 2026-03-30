@@ -82,7 +82,10 @@
             <span class="wizard-step-num">2</span>Route & Cargo
           </div>
           <div class="wizard-step" id="wStep3">
-            <span class="wizard-step-num">3</span>Review & Confirm
+            <span class="wizard-step-num">3</span>Checkpoints
+          </div>
+          <div class="wizard-step" id="wStep4">
+            <span class="wizard-step-num">4</span>Review & Confirm
           </div>
         </div>
 
@@ -118,8 +121,8 @@
               <input type="text" id="fDestination" class="form-control" placeholder="เชียงใหม่">
             </div>
             <div class="col-md-4">
-              <label class="form-label">Distance (km)</label>
-              <input type="number" id="fDistance" class="form-control" min="0">
+              <label class="form-label">Distance (km) *</label>
+              <input type="number" id="fDistance" class="form-control" min="1" required>
             </div>
             <div class="col-md-4">
               <label class="form-label">Cargo Type</label>
@@ -140,8 +143,22 @@
           </div>
         </div>
 
-        <!-- Step 3: Review -->
+        <!-- Step 3: Checkpoints -->
         <div id="step3Panel" class="d-none">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Checkpoints <span class="text-muted" style="font-size:12px">(อย่างน้อย 1 จุด)</span></h6>
+            <button class="btn btn-sm btn-outline-primary" onclick="addCheckpointRow()">
+              <i class="bi bi-plus-lg me-1"></i>Add Checkpoint
+            </button>
+          </div>
+          <div id="checkpointRows"></div>
+          <div id="checkpointError" class="text-danger mt-2 d-none" style="font-size:13px">
+            <i class="bi bi-exclamation-circle me-1"></i>Please add at least 1 checkpoint with a location name
+          </div>
+        </div>
+
+        <!-- Step 4: Review -->
+        <div id="step4Panel" class="d-none">
           <div id="reviewSummary" class="rounded p-3" style="background:#f8fafc;border:1px solid #e2e8f0;font-size:14px;line-height:2"></div>
         </div>
       </div>
@@ -169,8 +186,9 @@
   renderSidebar(); initSidebar();
 
   let currentStep    = 1;
+  const TOTAL_STEPS  = 4;
   const SESSION_KEY  = 'trip_draft_' + Date.now();
-  let tripDraft      = { step1: {}, step2: {} };
+  let tripDraft      = { step1: {}, step2: {}, checkpoints: [] };
   let selectedTripId = null;
 
   // ─── Filters ──────────────────────────────────────────────
@@ -258,6 +276,12 @@
       return;
     }
 
+    // หา checkpoint จุดที่ถึงตาในตอนนี้ — ต้อง DEPARTED จุดก่อนหน้าให้ครบก่อน
+    // จุดที่ active คือจุดแรกสุด (sequence น้อยสุด) ที่ยังไม่ DEPARTED/SKIPPED
+    const activeChkId = checkpoints.find(
+      c => c.status !== 'DEPARTED' && c.status !== 'SKIPPED'
+    )?.id ?? null;
+
     const stepsHtml = `
       <h6 class="mb-3">Checkpoint Progress</h6>
       <div class="step-indicator">
@@ -266,11 +290,23 @@
                     : chk.status === 'ARRIVED'  ? 'step-active'
                     : 'step-pending';
           const dotIcon = chk.status === 'DEPARTED' ? '✓' : (i + 1);
+
+          // อนุญาตให้กดได้เฉพาะ: trip กำลังเดินทาง + เป็นจุดที่ถึงตา + ยังไม่ DEPARTED
+          const isCurrentTurn = chk.id === activeChkId;
           const canUpdate = trip.status === 'IN_PROGRESS' &&
+                            isCurrentTurn &&
                             (chk.status === 'PENDING' || chk.status === 'ARRIVED');
 
           let nextStatus = chk.status === 'PENDING'  ? 'ARRIVED'
                          : chk.status === 'ARRIVED'  ? 'DEPARTED' : null;
+
+          // ถ้ายังไม่ถึงตา แสดง hint ว่าต้องรอจุดก่อนหน้าก่อน
+          const waitingHint = trip.status === 'IN_PROGRESS' &&
+                              !isCurrentTurn &&
+                              chk.status === 'PENDING'
+            ? `<span class="text-muted" style="font-size:12px"><i class="bi bi-lock me-1"></i>Waiting for previous checkpoint to depart</span>`
+            : '';
+
           const actionBtn = canUpdate && nextStatus
             ? `<button class="btn btn-sm btn-outline-primary" id="btn-chk-${chk.id}"
                        onclick="updateCheckpoint('${chk.id}','${nextStatus}','${trip.id}')">
@@ -291,6 +327,7 @@
                 ${chk.notes ? `<div class="step-sub text-muted">${chk.notes}</div>` : ''}
                 <div class="step-actions" id="action-${chk.id}">
                   ${actionBtn}
+                  ${waitingHint}
                   <span id="err-${chk.id}" class="text-danger" style="font-size:12px"></span>
                 </div>
               </div>
@@ -353,8 +390,8 @@
   // ─── Start / Complete Trip ────────────────────────────────
   async function startTrip(id) {
     try {
-      await api.json(`/trips/${id}/status`, {
-        method: 'PATCH', body: JSON.stringify({ status: 'IN_PROGRESS' }),
+      await api.json(`/trips/${id}/start`, {
+        method: 'PATCH', body: '{}',
       });
       showToast('Trip started!');
       await loadTripTracker(id);
@@ -378,7 +415,7 @@
   // ─── Multi-step Trip Form ─────────────────────────────────
   async function openTripForm() {
     currentStep = 1;
-    tripDraft   = { step1: {}, step2: {} };
+    tripDraft   = { step1: {}, step2: {}, checkpoints: [] };
     updateWizardUI();
 
     // Load vehicles & drivers for Step 1
@@ -400,7 +437,11 @@
     try {
       const draft = await api.json(`/trip-drafts/${SESSION_KEY}`);
       if (draft) {
-        tripDraft = { step1: draft.step1_data||{}, step2: draft.step2_data||{} };
+        tripDraft = {
+          step1: draft.step1_data||{},
+          step2: draft.step2_data||{},
+          checkpoints: draft.checkpoints||[],
+        };
         currentStep = draft.current_step || 1;
         restoreFormFromDraft();
       }
@@ -437,12 +478,81 @@
     if (tripDraft.step2.origin)     document.getElementById('fOrigin').value     = tripDraft.step2.origin;
     if (tripDraft.step2.destination)document.getElementById('fDestination').value= tripDraft.step2.destination;
     if (tripDraft.step2.distance_km)document.getElementById('fDistance').value   = tripDraft.step2.distance_km;
+    // restore checkpoints
+    document.getElementById('checkpointRows').innerHTML = '';
+    (tripDraft.checkpoints||[]).forEach(() => addCheckpointRow());
+    tripDraft.checkpoints.forEach((chk, i) => {
+      const row = document.getElementById('checkpointRows').children[i];
+      if (!row) return;
+      row.querySelector('.chk-name').value    = chk.location_name || '';
+      row.querySelector('.chk-purpose').value = chk.purpose || '';
+      row.querySelector('.chk-notes').value   = chk.notes || '';
+    });
+  }
+
+  // ─── Checkpoint Rows ──────────────────────────────────────
+  let chkCounter = 0;
+  function addCheckpointRow(scrollIntoView = true) {
+    chkCounter++;
+    const id  = 'chkRow_' + chkCounter;
+    const num = document.getElementById('checkpointRows').children.length + 1;
+    const div = document.createElement('div');
+    div.id        = id;
+    div.className = 'border rounded p-3 mb-2 position-relative';
+    div.style.background = '#f8fafc';
+    div.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-semibold text-primary" style="font-size:13px">
+          <i class="bi bi-geo-alt me-1"></i>Checkpoint <span class="chk-num">${num}</span>
+        </span>
+        <button class="btn btn-sm btn-outline-danger py-0" onclick="removeCheckpointRow('${id}')" title="Remove">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
+      <div class="row g-2">
+        <div class="col-md-5">
+          <input type="text" class="form-control form-control-sm chk-name" placeholder="Location name *" required>
+        </div>
+        <div class="col-md-4">
+          <select class="form-select form-select-sm chk-purpose">
+            <option value="">Purpose…</option>
+            <option>FUEL</option><option>REST</option><option>DELIVERY</option>
+            <option>PICKUP</option><option>INSPECTION</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <input type="text" class="form-control form-control-sm chk-notes" placeholder="Notes">
+        </div>
+      </div>`;
+    document.getElementById('checkpointRows').appendChild(div);
+    if (scrollIntoView) div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    renumberCheckpoints();
+  }
+
+  function removeCheckpointRow(id) {
+    document.getElementById(id)?.remove();
+    renumberCheckpoints();
+  }
+
+  function renumberCheckpoints() {
+    document.querySelectorAll('#checkpointRows .chk-num').forEach((el, i) => {
+      el.textContent = i + 1;
+    });
+  }
+
+  function collectCheckpoints() {
+    return Array.from(document.querySelectorAll('#checkpointRows > div')).map(row => ({
+      location_name: row.querySelector('.chk-name').value.trim(),
+      purpose:       row.querySelector('.chk-purpose').value || null,
+      notes:         row.querySelector('.chk-notes').value.trim() || null,
+    }));
   }
 
   async function saveDraftToApi() {
     await api.put(`/trip-drafts/${SESSION_KEY}`, {
       step1_data:   tripDraft.step1,
       step2_data:   tripDraft.step2,
+      checkpoints:  tripDraft.checkpoints,
       current_step: currentStep,
     }).catch(()=>{});
   }
@@ -455,6 +565,7 @@
 
   async function wizardNext() {
     document.getElementById('formAlert').classList.add('d-none');
+    document.getElementById('checkpointError').classList.add('d-none');
 
     if (currentStep === 1) {
       const d = collectStep1();
@@ -465,21 +576,45 @@
       tripDraft.step1 = d;
       await saveDraftToApi();
       currentStep = 2;
+
     } else if (currentStep === 2) {
       const d = collectStep2();
       if (!d.origin || !d.destination) {
         showFormAlert('Origin and Destination are required');
         return;
       }
+      if (!d.distance_km || d.distance_km <= 0) {
+        showFormAlert('Distance (km) is required and must be greater than 0');
+        return;
+      }
       tripDraft.step2 = d;
       await saveDraftToApi();
       currentStep = 3;
+      // ถ้ายังไม่มี checkpoint row เลย ให้เพิ่มแถวแรกอัตโนมัติ
+      if (document.getElementById('checkpointRows').children.length === 0) {
+        addCheckpointRow(false);
+      }
+
+    } else if (currentStep === 3) {
+      const chks = collectCheckpoints();
+      const valid = chks.length > 0 && chks.every(c => c.location_name);
+      if (!valid) {
+        document.getElementById('checkpointError').classList.remove('d-none');
+        return;
+      }
+      tripDraft.checkpoints = chks;
+      await saveDraftToApi();
+      currentStep = 4;
 
       // Build review
       const vLabel = document.getElementById('fVehicle').options[document.getElementById('fVehicle').selectedIndex]?.text || '—';
       const dLabel = document.getElementById('fDriver').options[document.getElementById('fDriver').selectedIndex]?.text || '—';
+      const d = tripDraft.step2;
+      const chkHtml = tripDraft.checkpoints.map((c, i) =>
+        `<li style="font-size:13px"><strong>${i+1}. ${c.location_name}</strong>${c.purpose ? ` — ${c.purpose}` : ''}${c.notes ? ` <span class="text-muted">(${c.notes})</span>` : ''}</li>`
+      ).join('');
       document.getElementById('reviewSummary').innerHTML = `
-        <div class="row g-2">
+        <div class="row g-2 mb-3">
           <div class="col-6"><b>Vehicle:</b> ${vLabel}</div>
           <div class="col-6"><b>Driver:</b> ${dLabel}</div>
           <div class="col-6"><b>Origin:</b> ${d.origin}</div>
@@ -487,6 +622,9 @@
           <div class="col-4"><b>Distance:</b> ${d.distance_km||'—'} km</div>
           <div class="col-4"><b>Cargo:</b> ${d.cargo_type||'—'}</div>
           <div class="col-4"><b>Weight:</b> ${d.cargo_weight_kg||'—'} kg</div>
+        </div>
+        <div><b>Checkpoints (${tripDraft.checkpoints.length}):</b>
+          <ol class="mt-1 mb-0 ps-3">${chkHtml}</ol>
         </div>`;
     }
     updateWizardUI();
@@ -501,14 +639,14 @@
   }
 
   function updateWizardUI() {
-    ['step1Panel','step2Panel','step3Panel'].forEach((id,i) => {
+    ['step1Panel','step2Panel','step3Panel','step4Panel'].forEach((id,i) => {
       document.getElementById(id).classList.toggle('d-none', i+1 !== currentStep);
     });
     document.getElementById('btnBack').classList.toggle('d-none', currentStep === 1);
-    document.getElementById('btnNext').classList.toggle('d-none', currentStep === 3);
-    document.getElementById('btnSubmit').classList.toggle('d-none', currentStep !== 3);
+    document.getElementById('btnNext').classList.toggle('d-none', currentStep === TOTAL_STEPS);
+    document.getElementById('btnSubmit').classList.toggle('d-none', currentStep !== TOTAL_STEPS);
 
-    for (let i=1; i<=3; i++) {
+    for (let i=1; i<=TOTAL_STEPS; i++) {
       const el = document.getElementById('wStep' + i);
       el.classList.remove('active','done');
       if (i === currentStep) el.classList.add('active');
@@ -524,7 +662,11 @@
     try {
       await api.json('/trips', {
         method: 'POST',
-        body: JSON.stringify({ ...tripDraft.step1, ...tripDraft.step2 }),
+        body: JSON.stringify({
+          ...tripDraft.step1,
+          ...tripDraft.step2,
+          checkpoints: tripDraft.checkpoints,
+        }),
       });
       await api.delete(`/trip-drafts/${SESSION_KEY}`).catch(()=>{});
       bootstrap.Modal.getInstance(document.getElementById('tripModal')).hide();
